@@ -1,4 +1,8 @@
 function zoom_ui(MainFig,im,cones1, cones2, offsets, orgs1, orgs2,title1,title2)
+
+global PIXELS_NOT_CONES;
+%global COMPARING; % No: It's determined from the filenames
+
 % Zoom axis:
 zoom_initial=[(size(im,2)/2-200/2) 1 100 100];
 f_zoom=figure(10);
@@ -6,9 +10,12 @@ imshow(im(zoom_initial(2):zoom_initial(2)+zoom_initial(4),...
     zoom_initial(1):zoom_initial(1)+zoom_initial(3)),...
     "InitialMagnification",200);
 %set(gca,'YDir','normal'); % reverse the image axis
+
+colorbar;
 axis on;
 %hold on;
 hold off;
+
 ax_zoom=gca;
 
 % Although designed to show two ORGs side-by-side for comparison, it can
@@ -29,28 +36,39 @@ if COMPARING
     subplot(1,2,1)
 end
 hold on;
-org_lines1=[];
-for ncurve=1:size(orgs1,2)
-    color_index = ceil( 256 * colors(ncurve) );
-    lin1=plot(orgs1(:,ncurve), 'Color', cmap_jet(color_index,:));
-    org_lines1 = [org_lines1 lin1];
-end
-if COMPARING
-    subplot(1,2,2)
-    hold on;
-    org_lines2=[];
-    for ncurve=1:size(orgs2,2)
-        color_index = ceil( 256 * colors2(ncurve) );
-        linx=plot(orgs2(:,ncurve), 'Color', cmap_jet(color_index,:));
-        org_lines2 = [org_lines2 linx];
+
+if PIXELS_NOT_CONES
+    trace1=nanmean(orgs1, [2]);
+    org_lines1 = plot( trace1 );
+
+    ylim([min(orgs1(:)), max(orgs1(:)) ] );
+    ylim("manual");
+else
+    org_lines1=[];
+    for ncurve=1:size(orgs1,2)
+        color_index = ceil( 256 * colors(ncurve) );
+        lin1=plot(orgs1(:,ncurve), 'Color', cmap_jet(color_index,:));
+        org_lines1 = [org_lines1 lin1];
+    end
+    if COMPARING
+        subplot(1,2,2)
+        hold on;
+        org_lines2=[];
+        for ncurve=1:size(orgs2,2)
+            color_index = ceil( 256 * colors2(ncurve) );
+            linx=plot(orgs2(:,ncurve), 'Color', cmap_jet(color_index,:));
+            org_lines2 = [org_lines2 linx];
+        end
     end
 end
 colormap('jet');
 %hold off;
 ax_org=gca;
+org_lines1.ButtonDownFcn = {@function_org_click,0};
 
 MainFig = figure();
 imagesc(im);
+axis('equal');
 colormap('bone');
 freezeColors();
 
@@ -73,6 +91,11 @@ handles.plot_centroids=0;
 handles.plot_refs=0;
 handles.mags=[10,20,30,75,100,200];
 
+handles.phase_show=0; 
+handles.phase_current=1;
+handles.phase_max=size(orgs1,1);
+handles.phase_line=[]; % So first delete doesn't fail
+
 figure(MainFig); % Not sure why necessary
 
 zoom_rect=rectangle('Position',zoom_initial, 'EdgeColor', 'white');
@@ -82,8 +105,16 @@ handles.zoom_rect=zoom_rect;
 handles.ax2=ax_zoom;
 handles.ax_org=ax_org;
 
-cones1_x=cones1.cone_mat_all(:,1)+cones1.ROI(1);
-cones1_y=cones1.cone_mat_all(:,2)+cones1.ROI(2);
+handles.prev = []; % For mean dynamic ORG window
+
+if PIXELS_NOT_CONES
+    cones1_x=cones1(:,1);
+    cones1_y=cones1(:,2);
+else    
+    cones1_x=cones1.cone_mat_all(:,1)+cones1.ROI(1);
+    cones1_y=cones1.cone_mat_all(:,2)+cones1.ROI(2);
+end
+
 cones1_x=[cones1_x;NaN];
 cones1_y=[cones1_y;NaN]; % don't close polygon
 
@@ -91,8 +122,13 @@ cones=patch(cones1_x,cones1_y,colors,'Marker','.','MarkerEdgeColor', 'flat', 'Ed
 colormap('jet');     
 handles.cones=cones;
 
-cones2_x=cones2.cone_mat_all(:,1)+cones2.ROI(1)+offsets(1);
-cones2_y=cones2.cone_mat_all(:,2)+cones2.ROI(2)+offsets(2);
+if PIXELS_NOT_CONES
+    cones2_x=cones2(:,1)+offsets(1);
+    cones2_y=cones2(:,2)+offsets(2);
+else    
+    cones2_x=cones2.cone_mat_all(:,1)+cones2.ROI(1)+offsets(1);
+    cones2_y=cones2.cone_mat_all(:,2)+cones2.ROI(2)+offsets(2);
+end
 cones2_x=[cones2_x;NaN];
 cones2_y=[cones2_y;NaN]; % don't close polygon
 
@@ -105,6 +141,12 @@ if COMPARING
     handles.org_lines2=org_lines2;
 else
     handles.org_lines2=org_lines1; % Dummy
+    cones2.Visible=0;
+end
+
+if PIXELS_NOT_CONES
+    cones.Visible=0;
+    cones2.Visible=0;
 end
 
 guidata(gca,handles);
@@ -153,18 +195,35 @@ set(gcf, 'keypressfcn', {@myclick,4});
             handles.mag_left=xleft;
             handles.mag_top=ytop;
     
-            im_zoomed=im(ytop:ytop+pos(4),xleft:(xleft+pos(3)));
-            imagesc(im_zoomed, 'Parent', handles.ax2);
-            colormap(handles.ax2,'bone');
+            if handles.phase_show
+                in1=all ([cones1_x >= xleft,cones1_x<xleft+pos(3),...
+                    cones1_y>=ytop,cones1_y<ytop+pos(4)], 2);
+                phases=orgs1(handles.phase_current,find(in1));
+                phases=reshape(phases,[pos(3) pos(4)] );
+                clims = [-pi, pi];
+                imagesc(phases, 'Parent', handles.ax2, clims);
+                colorbar(handles.ax2);
+                colormap(handles.ax2,'hsv');
+                title(handles.ax2, handles.phase_current);
+            else
+                im_zoomed=im(ytop:ytop+pos(4),xleft:(xleft+pos(3)));
+                imagesc(im_zoomed, 'Parent', handles.ax2);
+                colormap(handles.ax2,'bone');
+            end                
             freezeColors(handles.ax2); % Keep b*w
+
 
             xlim(handles.ax2, [0.5,pos(3)+0.5]);
             ylim(handles.ax2, [0.5,pos(3)+0.5]);
     
+            % https://www.mathworks.com/matlabcentral/answers/152426-sprintf-d-x-prints-out-exponential-notation-instead-of-decimal-notation?s_tid=prof_contriblnk
+            % MATLAB sprintf has "interesting" behavior of not really
+            % casting to integer.
+
             % Display meaningful axes labels (pixel values offset by corner)
             scaler=pos(3);
-            addMMx=@(x) sprintf('%d',(x+xleft));
-            addMMy=@(y) sprintf('%d',(y+ytop));
+            addMMx=@(x) sprintf('%.0f',(x+xleft));
+            addMMy=@(y) sprintf('%.0f',(y+ytop));
             xticklabels(handles.ax2,cellfun(addMMx,num2cell(xticks(handles.ax2)'),'UniformOutput',false));
             yticklabels(handles.ax2,cellfun(addMMy,num2cell(yticks(handles.ax2)'),'UniformOutput',false));
     
@@ -189,20 +248,45 @@ set(gcf, 'keypressfcn', {@myclick,4});
 
         in1=all ([cones1_x > xleft,cones1_x<xleft+width,...
             cones1_y>ytop,cones1_y<ytop+height], 2);
-
-        for ncurve=1:size(orgs1,2)
-            handles.org_lines1(ncurve).Visible=in1(ncurve);
-        end
-
         in2=all ([cones2_x > xleft,cones2_x<xleft+width,...
             cones2_y>ytop,cones2_y<ytop+height], 2);
 
-        for ncurve=1:size(orgs2,2)
-            handles.org_lines2(ncurve).Visible=in2(ncurve);
+        if PIXELS_NOT_CONES
+            trace1=[nanmean(orgs1(:,find(in1)), [2]); nan]; % Append NaN to make unclosed
+            %axes(handles.ax_org);
+            %org_lines1 = plot( trace1 );
+            %delete( handles.ax_org, handles.org_lines1 );
+            %delete( handles.ax_org, findobj('type', 'patch'));
+            %clear hanesl.org_lines1;
+            %clear org_lines1;
+            
+            %delete( findobj(handles.ax_org, 'type', 'patch') );
+
+            delete( handles.prev );
+            org_lines1 = patch( 1:size(trace1,1), trace1, 'blue', 'Parent',handles.ax_org);
+            handles.prev = org_lines1;
+
+            titl=sprintf('%4.0f,%4.0f (%4.0fx%4.0f)', xleft, ytop, width, height );
+            title(titl);
+        else
+            for ncurve=1:size(orgs1,2)
+                handles.org_lines1(ncurve).Visible=in1(ncurve);
+            end
+    
+            for ncurve=1:size(orgs2,2)
+                handles.org_lines2(ncurve).Visible=in2(ncurve);
+            end
+
+            titl=sprintf('%s:%d (dots), %s:%d (xs)',title1,sum(in1),title2,sum(in2) );
+            title(titl);
         end
 
-        titl=sprintf('%s:%d (dots), %s:%d (xs)',title1,sum(in1),title2,sum(in2) );
-        title(titl);
+        if handles.phase_show
+            delete( handles.phase_line);
+            handles.phase_line = patch( [handles.phase_current, handles.phase_current], [-pi, pi], 'red', 'Parent',handles.ax_org);
+        end
+
+        guidata(gca,handles); % Resave guidata in case we made changes here
 
         drawnow;
         pause(0.05);
@@ -307,6 +391,8 @@ if type==4 % keypress
             current_mag=handles.mags(idx_curr+1);
             handles.zoom_rect.Position(3)=current_mag;
             handles.zoom_rect.Position(4)=current_mag;
+        case 112 % p : phase plot
+            handles.phase_show = ~handles.phase_show;
         case 114 % r
             colors=rand([1 size(handles.cones.CData,1) ]);
             handles.cones.CData=colors;
@@ -320,6 +406,18 @@ if type==4 % keypress
             handles.cones.Visible=~handles.cones.Visible;
         case 50 % 2
             handles.cones2.Visible=~handles.cones2.Visible;
+
+        case 44
+            handles.phase_current = handles.phase_current-1;
+            if handles.phase_current<1
+                handles.phase_current=1;
+            end
+        case 46
+            handles.phase_current = handles.phase_current+1;
+            if handles.phase_current>handles.phase_max
+                handles.phase_current=handles.phase_max;
+            end
+
         otherwise
             disp(['unknown key: ' num2str(val)]);
     end % switch on key
@@ -332,3 +430,10 @@ end % keypress event
 
 guidata(gca,handles);
 end
+
+function function_org_click(handles,event,type)
+    coord=event.IntersectionPoint;
+    disp(coord);
+    disp(handles.cones2.Visible);
+end
+
