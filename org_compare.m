@@ -1,13 +1,13 @@
 %dir1='F:\3d_registration\results\Results_flat_ram_sup1.5_30_32_32_4\ICA_cmplxavg_2px_selected_v2\'
-dir1='./';
+dir1='';
 dir2=dir1;
 name1='seg-based';
 name2=name1;
+cone_filename='registered_averaged_isos_03.tiff';
+org_filename='whole_ORG_en_face_03.mat';
+
 %cone_filename='Cone_selection.mat';
 %org_filename='Phase_unwrap_error_corrected.mat';
-cone_filename='registered_averaged_isos_03.tiff';
-%org_filename='Phase_unwrap_error_corrected.mat';
-org_filename='whole_ORG_en_face_03.mat';
 
 global PIXELS_NOT_CONES;
 PIXELS_NOT_CONES=1;
@@ -21,7 +21,7 @@ if PIXELS_NOT_CONES
     org_file2 = org_file1;
 
     orgs1=org_file1.ISOS_COST_del_phi_adjacent_A_scans_2D2;
-    orgs1 = angle(reshape(orgs1,[size(orgs1,1)*size(orgs1,2),size(orgs1,3)] ) );
+    orgs1 = reshape(orgs1,[size(orgs1,1)*size(orgs1,2),size(orgs1,3)] );
     orgs1 = orgs1';
     orgs2 = orgs1;    
 

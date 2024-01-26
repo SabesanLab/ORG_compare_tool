@@ -38,10 +38,10 @@ end
 hold on;
 
 if PIXELS_NOT_CONES
-    trace1=nanmean(orgs1, [2]);
+    trace1=unwrap(angle(nanmean(orgs1, [2])));
     org_lines1 = plot( trace1 );
 
-    ylim([min(orgs1(:)), max(orgs1(:)) ] );
+    ylim([min(trace1), max(trace1)*1.5] );
     ylim("manual");
 else
     org_lines1=[];
@@ -198,15 +198,15 @@ set(gcf, 'keypressfcn', {@myclick,4});
             if handles.phase_show
                 in1=all ([cones1_x >= xleft,cones1_x<xleft+pos(3),...
                     cones1_y>=ytop,cones1_y<ytop+pos(4)], 2);
-                phases=orgs1(handles.phase_current,find(in1));
-                phases=reshape(phases,[pos(3) pos(4)] );
-                clims = [-pi, pi];
-                imagesc(phases, 'Parent', handles.ax2, clims);
+                phases=unwrap(angle(orgs1(:,find(in1))),[1]);
+                phases=reshape(phases(handles.phase_current,:),[pos(3) pos(4)] );
+                %clims = [-pi, pi];
+                imagesc(phases, 'Parent', handles.ax2);
                 colorbar(handles.ax2);
                 colormap(handles.ax2,'hsv');
                 title(handles.ax2, handles.phase_current);
             else
-                im_zoomed=im(ytop:ytop+pos(4),xleft:(xleft+pos(3)));
+                im_zoomed=im(round(ytop):round(ytop)+pos(4),round(xleft):(round(xleft)+pos(3)));
                 imagesc(im_zoomed, 'Parent', handles.ax2);
                 colormap(handles.ax2,'bone');
             end                
@@ -252,7 +252,7 @@ set(gcf, 'keypressfcn', {@myclick,4});
             cones2_y>ytop,cones2_y<ytop+height], 2);
 
         if PIXELS_NOT_CONES
-            trace1=[nanmean(orgs1(:,find(in1)), [2]); nan]; % Append NaN to make unclosed
+            trace1=[unwrap(angle(nanmean(orgs1(:,find(in1)), [2]))); nan]; % Append NaN to make unclosed polygon
             %axes(handles.ax_org);
             %org_lines1 = plot( trace1 );
             %delete( handles.ax_org, handles.org_lines1 );
@@ -381,6 +381,9 @@ if type==4 % keypress
             elseif handles.alpha==0.8
                 handles.alpha=0.1;
             end
+        case 99 % c
+            handles.cones.Visible = ~handles.cones.Visible;
+            handles.plot_centroids=~handles.plot_centroids;
         case 109 % 'm': magnification
             current_mag=handles.zoom_rect.Position(3);
 
@@ -397,9 +400,6 @@ if type==4 % keypress
             colors=rand([1 size(handles.cones.CData,1) ]);
             handles.cones.CData=colors;
             %handles.cones.FaceVertexCData=colors;
-        case 99 % c
-            handles.cones.Visible = ~handles.cones.Visible;
-            handles.plot_centroids=~handles.plot_centroids;
         case 122 % 'z'
             handles.zoom_rect.Visible=~handles.zoom_rect.Visible;
         case 49 % 1
@@ -433,7 +433,7 @@ end
 
 function function_org_click(handles,event,type)
     coord=event.IntersectionPoint;
-    disp(coord);
-    disp(handles.cones2.Visible);
+    %disp(coord);
+    %disp(handles.cones2.Visible);
 end
 
